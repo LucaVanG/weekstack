@@ -1,5 +1,5 @@
 // Caches the app so it opens with no internet. Bump VERSION after changing any file.
-const VERSION = 'weekstack-v1';
+const VERSION = 'weekstack-v2';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'my-week.ics',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
