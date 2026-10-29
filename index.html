@@ -61,6 +61,9 @@ h1{font-family:var(--f-display);font-weight:600;font-size:23px;letter-spacing:.0
 .days button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 0;font-size:13px;font-weight:500;position:relative}
 .days button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .days button.today::after{content:"";position:absolute;left:50%;bottom:3px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:currentColor}
+.days button small{display:block;font-family:var(--f-mono);font-size:11px;opacity:.75;line-height:1.2}
+.wk{grid-column:1/-1;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:4px}
+.wk:first-child{margin-top:0}
 
 .mix{display:flex;flex-direction:column;gap:7px}
 .mixbar{display:flex;height:12px;border-radius:4px;overflow:hidden;gap:2px}
@@ -189,7 +192,7 @@ ul.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;g
 
   <section id="tab-week" hidden>
     <div style="display:flex;flex-direction:column;gap:12px">
-      <div class="panel"><h2>Where your week goes <small id="weekTotal"></small></h2><div id="totals" style="display:flex;flex-direction:column;gap:7px"></div></div>
+      <div class="panel"><h2>Where your fortnight goes <small id="weekTotal"></small></h2><div id="totals" style="display:flex;flex-direction:column;gap:7px"></div></div>
       <div class="panel"><h2>Each day <small>tap to open</small></h2><div id="strips" style="display:flex;flex-direction:column;gap:5px"></div></div>
     </div>
   </section>
@@ -208,9 +211,9 @@ ul.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;g
 
   <div class="btnrow">
     <a href="my-week.ics" style="color:var(--accent);font-size:13px">Add phone alerts to my calendar</a>
-    <button class="link" id="resetBtn" type="button">Reset to my week</button>
+    <button class="link" id="resetBtn" type="button">Reset to my fortnight</button>
   </div>
-  <p class="note">Ticks clear at midnight. Everything saves on this device.</p>
+  <p class="note" id="foot"></p>
 </div>
 
 <div class="overlay" id="overlay" hidden>
@@ -249,7 +252,10 @@ const DEFAULT_TYPES=[
   {id:'work',name:'Work',color:'#D9822B'},{id:'gym',name:'Gym',color:'#2E9E63'},{id:'tutor',name:'Tutor',color:'#8A5CD6'},
   {id:'meals',name:'Meals',color:'#C9A227'},{id:'routine',name:'Routine',color:'#7A8699'}];
 const DEFAULT_WEEK=[[0,"07:30","08:50","Get ready","routine"],[0,"08:50","15:15","School","school"],[1,"07:30","08:50","Get ready","routine"],[1,"08:50","15:15","School","school"],[2,"07:30","08:50","Get ready","routine"],[2,"08:50","15:15","School","school"],[3,"07:30","08:50","Get ready","routine"],[3,"08:50","15:15","School","school"],[4,"07:30","08:50","Get ready","routine"],[4,"08:50","15:15","School","school"],[0,"15:15","16:00","Free time","free"],[0,"16:00","17:00","Maths tutor","tutor"],[0,"17:00","18:30","Study","study"],[0,"18:30","19:30","Dinner","meals"],[0,"19:30","21:30","Gym","gym"],[0,"21:30","21:45","Vitamins, bed","routine"],[1,"15:15","16:00","Free time","free"],[1,"16:00","17:00","Study","study"],[1,"17:00","20:00","Work","work"],[1,"20:00","20:30","Dinner","meals"],[1,"20:30","22:15","Gym","gym"],[1,"22:30","22:45","Vitamins, bed","routine"],[2,"15:15","16:00","Free time","free"],[2,"16:00","17:00","Study","study"],[2,"17:00","22:00","Work","work"],[2,"22:00","22:30","Dinner","meals"],[2,"22:30","22:45","Vitamins, bed","routine"],[3,"15:15","16:30","Free time","free"],[3,"16:30","17:00","English tutor","tutor"],[3,"17:00","18:00","Study","study"],[3,"18:00","18:30","Free time","free"],[3,"18:30","19:30","Dinner","meals"],[3,"19:30","22:15","Gym","gym"],[3,"22:30","22:45","Vitamins, bed","routine"],[4,"15:15","18:30","Free time","free"],[4,"18:30","22:00","Dinner out","meals"],[4,"22:15","22:30","Vitamins, bed","routine"],[5,"10:00","11:30","Gym","gym"],[5,"11:30","12:30","Lunch / free time","free"],[5,"12:30","14:30","Study","study"],[5,"14:30","17:00","Free time","free"],[5,"17:00","21:00","Work","work"],[5,"21:00","21:30","Dinner","meals"],[5,"21:30","21:45","Vitamins, bed","routine"],[6,"10:00","11:30","Gym","gym"],[6,"11:30","12:30","Lunch / free time","free"],[6,"12:30","14:30","Study","study"],[6,"14:30","17:00","Free time","free"],[6,"17:00","21:00","Work","work"],[6,"21:00","21:30","Dinner","meals"],[6,"21:30","21:45","Vitamins, bed","routine"]];
-const KEY='weekstack.v4', CKEY='weekstack.checks4', TABKEY='weekstack.tab';
+// The plan is a fortnight: day 0–6 = Week 1 (work Friday), 7–13 = Week 2. Week 1 started Mon 26 Oct 2026.
+const CYCLE_START=Date.UTC(2026,9,26);
+const WORK_FRIDAY=[[4,"15:15","17:00","Free time","free"],[4,"17:00","21:00","Work","work"],[4,"21:00","21:30","Dinner","meals"],[4,"21:30","21:45","Vitamins, bed","routine"]];
+const KEY='weekstack.v5', OLDKEY='weekstack.v4', CKEY='weekstack.checks5', TABKEY='weekstack.tab';
 const DAY_START=420, DAY_END=1380;
 
 const $=s=>document.querySelector(s);
@@ -263,22 +269,47 @@ const load=k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return nu
 const store=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 const dkey=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 
-function freshState(){return{types:DEFAULT_TYPES.map(t=>({...t})),events:DEFAULT_WEEK.map(([d,s,e,t,ty])=>({id:uid(),day:d,start:toM(s),end:toM(e),title:t,type:ty,tasks:[]}))}}
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const shortDate=d=>`${d.getDate()} ${d.toLocaleString('en',{month:'short'})}`;
+
+const block=([d,s,e,t,ty])=>({id:uid(),day:d,start:toM(s),end:toM(e),title:t,type:ty,tasks:[]});
+const isFriAfternoon=e=>e.day===4&&e.start>=toM('15:15');
+function freshState(){
+  const w=DEFAULT_WEEK.map(block);
+  const week1=[...w.filter(e=>!isFriAfternoon(e)),...WORK_FRIDAY.map(block)];
+  const week2=DEFAULT_WEEK.map(block).map(e=>({...e,day:e.day+7}));
+  return{types:DEFAULT_TYPES.map(t=>({...t})),events:[...week1,...week2]};
+}
+// v4 held one week (day 0–6): copy it into both weeks and put the shift on Week 1's Friday.
+function migrate(old){
+  const copy=e=>({...e,id:uid(),day:e.day+7,tasks:(e.tasks||[]).map(t=>({...t,id:uid()}))});
+  const types=old.types.some(t=>t.id==='work')?old.types:[...old.types,{...DEFAULT_TYPES.find(t=>t.id==='work')}];
+  return{types,events:[...old.events.filter(e=>!isFriAfternoon(e)),...WORK_FRIDAY.map(block),...old.events.map(copy)]};
+}
+const valid=s=>s&&Array.isArray(s.types)&&Array.isArray(s.events);
 let S=load(KEY);
-if(!S||!Array.isArray(S.types)||!Array.isArray(S.events))S=freshState();
+if(!valid(S)){const old=load(OLDKEY);S=valid(old)?migrate(old):freshState()}
 const typeOf=id=>S.types.find(t=>t.id===id)||{id,name:'Other',color:'#7A8699'};
 
-const nowInfo=()=>{const t=new Date();return{key:dkey(t),day:(t.getDay()+6)%7,min:t.getHours()*60+t.getMinutes(),date:t}};
-let today=nowInfo(),view=today.day;
+// cday = day of the fortnight (0–13); cycleKey = date of the Monday the fortnight started.
+const nowInfo=()=>{const t=new Date();const since=Math.round((Date.UTC(t.getFullYear(),t.getMonth(),t.getDate())-CYCLE_START)/864e5);
+  const cday=((since%14)+14)%14;return{key:dkey(t),cday,day:cday%7,cycleKey:dkey(addDays(t,-cday)),min:t.getHours()*60+t.getMinutes(),date:t}};
+let today=nowInfo(),view=today.cday;
 let tab=load(TABKEY);if(!['day','week','types'].includes(tab))tab='day';
 let checks=load(CKEY);
 function rollover(){
-  if(!checks||checks.date!==today.key){checks={date:today.key,ids:[]};store(CKEY,checks)}
+  if(!checks||checks.cycle!==today.cycleKey){checks={cycle:today.cycleKey,ids:[]};store(CKEY,checks)}
   for(const e of S.events)e.tasks=(e.tasks||[]).filter(t=>!t.date||t.date>=today.key);
 }
 rollover();
-const dateKeyFor=d=>{const x=new Date(today.date);x.setDate(x.getDate()+((d-today.day+7)%7));return dkey(x)};
-const isChecked=id=>checks.ids.includes(id);
+// The app shows this week then next week; each fortnight day maps to its date in that window.
+const weekBase=()=>today.cday-today.day;
+const windowDays=()=>{const b=weekBase();return[0,1].map(w=>Array.from({length:7},(_,i)=>(b+w*7+i)%14))};
+const dateFor=d=>addDays(today.date,(d-weekBase()+14)%14-today.day);
+const dateKeyFor=d=>dkey(dateFor(d));
+const weekNo=d=>d<7?1:2;
+const canTick=d=>dateKeyFor(d)<=today.key;
+const isChecked=(id,d)=>canTick(d)&&checks.ids.includes(id);
 const dayEvents=d=>S.events.filter(e=>e.day===d).sort((a,b)=>a.start-b.start);
 const visTasks=(e,d)=>{const k=dateKeyFor(d);return e.tasks.filter(t=>!t.date||t.date===k)};
 const toggles=new Map();
@@ -290,16 +321,18 @@ function render(){
   for(const t of ['day','week','types'])$('#tab-'+t).hidden=t!==tab;
   $('#progWrap').hidden=true;$('#count').textContent='';
   if(tab==='day')renderDay();else if(tab==='week')renderWeek();else renderTypes();
+  $('#foot').textContent=`Your plan repeats every two weeks. Ticks clear when a new fortnight starts (next: Mon ${shortDate(addDays(today.date,14-today.cday))}). Everything saves on this device.`;
 }
 
 function renderDay(){
-  const isToday=view===today.day, items=dayEvents(view);
-  $('#days').innerHTML=DAYS.map((d,i)=>`<button type="button" data-d="${i}" class="${i===today.day?'today':''}" aria-pressed="${i===view}">${d}</button>`).join('');
-  $('#title').textContent=isToday?`Today, ${FULL[view]} ${today.date.getDate()} ${today.date.toLocaleString('en',{month:'short'})}`:FULL[view];
+  const isToday=view===today.cday, past=!isToday&&canTick(view), items=dayEvents(view), vdate=dateFor(view);
+  $('#days').innerHTML=windowDays().map((row,w)=>`<span class="wk">${w?'Next week':'This week'} · Week ${weekNo(row[0])}${weekNo(row[0])===1?' (work Fri)':''}</span>`
+    +row.map(d=>`<button type="button" data-d="${d}" class="${d===today.cday?'today':''}" aria-pressed="${d===view}">${DAYS[d%7]}<small>${dateFor(d).getDate()}</small></button>`).join('')).join('');
+  $('#title').textContent=`${isToday?'Today, ':''}${FULL[view%7]} ${shortDate(vdate)}`;
 
   let total=0,done=0;
-  for(const e of items){total++;if(isChecked(e.id))done++;for(const t of visTasks(e,view)){total++;if(isChecked(t.id))done++}}
-  if(isToday){$('#count').innerHTML=`<b>${done}</b> of ${total} done`;$('#progWrap').hidden=false;$('#prog').style.width=total?done/total*100+'%':'0'}
+  for(const e of items){total++;if(isChecked(e.id,view))done++;for(const t of visTasks(e,view)){total++;if(isChecked(t.id,view))done++}}
+  if(isToday||past){$('#count').innerHTML=`<b>${done}</b> of ${total} done`;$('#progWrap').hidden=false;$('#prog').style.width=total?done/total*100+'%':'0'}
   else $('#count').textContent=`${items.length} blocks`;
 
   const mins={};for(const e of items)mins[e.type]=(mins[e.type]||0)+e.end-e.start;
@@ -307,33 +340,34 @@ function renderDay(){
   $('#mix').innerHTML=items.length?`<div class="mixbar">${order.map(id=>`<i style="--cat:${typeOf(id).color};flex-grow:${mins[id]}" title="${esc(typeOf(id).name)}"></i>`).join('')}</div>
     <div class="legend">${order.map(id=>`<span style="--cat:${typeOf(id).color}"><i></i>${esc(typeOf(id).name)} <b>${hrs(mins[id])}</b></span>`).join('')}</div>`:'';
 
-  const missed=isToday?items.filter(e=>e.end<=today.min&&!isChecked(e.id)):[];
+  const tickable=isToday||past;
+  const missed=tickable?items.filter(e=>(past||e.end<=today.min)&&!isChecked(e.id,view)):[];
   const al=$('#alert');
-  if(isToday&&total&&done===total){al.className='alert good';al.innerHTML='<strong>All done for today.</strong>';al.hidden=false}
+  if(tickable&&total&&done===total){al.className='alert good';al.innerHTML=`<strong>All done for ${isToday?'today':FULL[view%7]}.</strong>`;al.hidden=false}
   else if(missed.length){al.className='alert';al.innerHTML=`<strong>Not ticked yet:</strong> ${missed.map(e=>esc(e.title)).join(', ')}`;al.hidden=false}
-  else if(!isToday){al.className='note';al.textContent=`You can tick these on ${FULL[view]}. You can add tasks now.`;al.hidden=false}
+  else if(!tickable){al.className='note';al.textContent=`You can tick these on ${FULL[view%7]} ${shortDate(vdate)}. You can add tasks now.`;al.hidden=false}
   else al.hidden=true;
 
-  const dayName=isToday?'today':`this ${DAYS[view]}`;
+  const dayName=isToday?'today':`${DAYS[view%7]} ${vdate.getDate()}`;
   $('#list').innerHTML=items.map(e=>{
     const ty=typeOf(e.type), tasks=visTasks(e,view);
-    const ck=isToday&&isChecked(e.id), now=isToday&&!ck&&e.start<=today.min&&today.min<e.end, miss=isToday&&!ck&&e.end<=today.min;
-    const tdone=isToday?tasks.filter(t=>isChecked(t.id)).length:0;
+    const ck=isChecked(e.id,view), now=isToday&&!ck&&e.start<=today.min&&today.min<e.end, miss=tickable&&!ck&&(past||e.end<=today.min);
+    const tdone=tasks.filter(t=>isChecked(t.id,view)).length;
     const open=toggles.has(e.id)?toggles.get(e.id):tasks.length>0;
-    const expLabel=tasks.length?(isToday?`${tdone}/${tasks.length} tasks`:`${tasks.length} task${tasks.length>1?'s':''}`):'+ Tasks';
+    const expLabel=tasks.length?(tickable?`${tdone}/${tasks.length} tasks`:`${tasks.length} task${tasks.length>1?'s':''}`):'+ Tasks';
     return `<li class="item${ck?' done':''}${now?' now':''}${miss?' missed':''}" style="--cat:${ty.color}">
       <div class="row">
         <span class="dot"></span>
-        <input class="ck" type="checkbox" id="c-${e.id}" data-ck="${e.id}" aria-label="Done: ${esc(e.title)}" ${ck?'checked':''} ${isToday?'':'disabled'}>
+        <input class="ck" type="checkbox" id="c-${e.id}" data-ck="${e.id}" aria-label="Done: ${esc(e.title)}" ${ck?'checked':''} ${tickable?'':'disabled'}>
         <button type="button" class="body" data-edit="${e.id}"><span class="t">${esc(e.title)}</span><span class="tm"><span class="mono">${fmt(e.start)}–${fmt(e.end)}</span> · ${esc(ty.name)}</span></button>
         ${now?'<span class="tag">Now</span>':miss?'<span class="tag">Missed</span>':''}
         <button type="button" class="exp" data-exp="${e.id}" aria-expanded="${open}">${expLabel}</button>
       </div>
       ${open?`<div class="tasks">
-        ${tasks.map(t=>`<label class="task${isToday&&isChecked(t.id)?' done':''}"><input class="ck sm" type="checkbox" data-ck="${t.id}" ${isToday&&isChecked(t.id)?'checked':''} ${isToday?'':'disabled'}><span>${esc(t.text)}</span>${t.date?'<small>one-off</small>':'<small>weekly</small>'}<button type="button" class="x" data-deltask="${e.id}:${t.id}" aria-label="Remove task">×</button></label>`).join('')}
+        ${tasks.map(t=>`<label class="task${isChecked(t.id,view)?' done':''}"><input class="ck sm" type="checkbox" data-ck="${t.id}" ${isChecked(t.id,view)?'checked':''} ${tickable?'':'disabled'}><span>${esc(t.text)}</span>${t.date?'<small>one-off</small>':'<small>fortnightly</small>'}<button type="button" class="x" data-deltask="${e.id}:${t.id}" aria-label="Remove task">×</button></label>`).join('')}
         <form class="addtask" data-add="${e.id}">
           <input id="nt-${e.id}" maxlength="60" placeholder="${e.type==='study'?'e.g. Maths ex 4B':'Add a task'}" aria-label="New task for ${esc(e.title)}">
-          <select id="ns-${e.id}" aria-label="How often"><option value="once">Only ${dayName}</option><option value="week">Every ${DAYS[view]}</option></select>
+          <select id="ns-${e.id}" aria-label="How often"><option value="once">Only ${dayName}</option><option value="week">Every 2nd ${DAYS[view%7]} (Week ${weekNo(view)})</option></select>
           <button type="submit">Add</button>
         </form>
       </div>`:''}
@@ -341,17 +375,20 @@ function renderDay(){
 }
 
 function renderWeek(){
-  $('#title').textContent='This week';
+  $('#title').textContent='This fortnight';
   const mins={},count={};let all=0;
   for(const e of S.events){const m=e.end-e.start;mins[e.type]=(mins[e.type]||0)+m;count[e.type]=(count[e.type]||0)+1;all+=m}
-  $('#count').innerHTML=`<b>${hrs(all)}</b> planned`;
+  const ticked=S.events.filter(e=>checks.ids.includes(e.id)).length;
+  $('#count').innerHTML=`<b>${ticked}</b> of ${S.events.length} ticked`;
+  $('#progWrap').hidden=false;$('#prog').style.width=S.events.length?ticked/S.events.length*100+'%':'0';
   $('#weekTotal').textContent=hrs(all)+' total';
   const order=S.types.map(t=>t.id).concat(Object.keys(mins).filter(k=>!S.types.some(t=>t.id===k))).filter(id=>mins[id]).sort((a,b)=>mins[b]-mins[a]);
   const max=Math.max(1,...order.map(id=>mins[id]));
   $('#totals').innerHTML=order.map(id=>`<div class="trow" style="--cat:${typeOf(id).color}"><span>${esc(typeOf(id).name)}</span><span class="bar"><i style="width:${mins[id]/max*100}%"></i></span><span class="num">${hrs(mins[id])}</span></div>`).join('')||'<p class="note">No blocks yet.</p>';
   const span=DAY_END-DAY_START,pos=m=>Math.min(100,Math.max(0,(m-DAY_START)/span*100));
-  $('#strips').innerHTML=DAYS.map((d,i)=>{const ev=dayEvents(i);const t=ev.reduce((s,e)=>s+e.end-e.start,0);
-    return `<button type="button" class="strip${i===today.day?' today':''}" data-goto="${i}"><span class="lbl">${d}</span><span class="track">${ev.map(e=>`<i style="--cat:${typeOf(e.type).color};left:${pos(e.start)}%;width:${pos(e.end)-pos(e.start)}%" title="${esc(e.title)} ${fmt(e.start)}–${fmt(e.end)}"></i>`).join('')}</span><span class="num">${hrs(t)}</span></button>`}).join('')
+  $('#strips').innerHTML=windowDays().map((row,w)=>`<span class="wk">${w?'Next week':'This week'} · Week ${weekNo(row[0])}${weekNo(row[0])===1?' (work Fri)':''} · ${shortDate(dateFor(row[0]))} – ${shortDate(dateFor(row[6]))}</span>`
+    +row.map(i=>{const ev=dayEvents(i);const t=ev.reduce((s,e)=>s+e.end-e.start,0);
+    return `<button type="button" class="strip${i===today.cday?' today':''}" data-goto="${i}"><span class="lbl">${DAYS[i%7]}</span><span class="track">${ev.map(e=>`<i style="--cat:${typeOf(e.type).color};left:${pos(e.start)}%;width:${pos(e.end)-pos(e.start)}%" title="${esc(e.title)} ${fmt(e.start)}–${fmt(e.end)}"></i>`).join('')}</span><span class="num">${hrs(t)}</span></button>`}).join('')).join('')
     +`<div class="axis"><span></span><div class="ax">${[420,660,900,1140,1380].map(m=>`<span style="left:${pos(m)}%">${fmt(m)}</span>`).join('')}</div><span></span></div>`;
 }
 
@@ -372,7 +409,7 @@ let newColor=8;
 
 /* ---------- events ---------- */
 document.querySelector('.tabs').onclick=e=>{const t=e.target.dataset?.tab;if(t){tab=t;store(TABKEY,tab);render()}};
-$('#days').onclick=e=>{const d=e.target.dataset?.d;if(d!==undefined){view=+d;render()}};
+$('#days').onclick=e=>{const b=e.target.closest('[data-d]');if(b){view=+b.dataset.d;render()}};
 $('#strips').onclick=e=>{const b=e.target.closest('[data-goto]');if(b){view=+b.dataset.goto;tab='day';store(TABKEY,tab);render()}};
 $('#list').addEventListener('change',e=>{const id=e.target.dataset?.ck;if(!id)return;
   checks.ids=e.target.checked?[...checks.ids,id]:checks.ids.filter(x=>x!==id);store(CKEY,checks);render()});
@@ -402,7 +439,8 @@ $('#newTypeForm').onsubmit=e=>{e.preventDefault();const name=$('#newTypeName').v
 /* ---------- editor ---------- */
 let editing=null,isNew=false,armed=false,selDays=new Set();
 function fillTypeSelects(){const o=S.types.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');$('#fType').innerHTML=o;$('#fSplitType').innerHTML=o}
-function drawChips(){$('#fDays').innerHTML=DAYS.map((d,i)=>`<button type="button" data-chip="${i}" aria-pressed="${selDays.has(i)}">${d}</button>`).join('')}
+function drawChips(){$('#fDays').innerHTML=windowDays().map((row,w)=>`<span class="wk">${w?'Next week':'This week'} · Week ${weekNo(row[0])}</span>`
+  +row.map(i=>`<button type="button" data-chip="${i}" aria-pressed="${selDays.has(i)}">${DAYS[i%7]}</button>`).join('')).join('')}
 function openEditor(e,fresh=false){editing=e;isNew=fresh;armed=false;fillTypeSelects();
   $('#dlgTitle').textContent=fresh?'New block':'Edit block';$('#fTitle').value=e.title;$('#fType').value=e.type;
   selDays=new Set([e.day]);drawChips();$('#daysLab').textContent=fresh?'Days (pick as many as you like)':'Day';
@@ -439,10 +477,10 @@ $('#delBtn').onclick=()=>{if(!armed){armed=true;$('#delBtn').textContent='Tap ag
 $('#addBtn').onclick=()=>openEditor({day:view,start:960,end:1020,type:S.types.some(t=>t.id==='study')?'study':S.types[0].id,title:''},true);
 let rArmed=false;
 $('#resetBtn').onclick=()=>{if(!rArmed){rArmed=true;$('#resetBtn').textContent='Tap again: this removes your changes';return}
-  rArmed=false;$('#resetBtn').textContent='Reset to my week';S=freshState();checks={date:today.key,ids:[]};store(CKEY,checks);toggles.clear();render();toast('Back to your original week')};
+  rArmed=false;$('#resetBtn').textContent='Reset to my fortnight';S=freshState();checks={cycle:today.cycleKey,ids:[]};store(CKEY,checks);toggles.clear();render();toast('Back to your original fortnight')};
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,2400)}
 
-function tick(){const n=nowInfo();if(n.key!==today.key&&view===today.day)view=n.day;today=n;rollover();
+function tick(){const n=nowInfo();if(n.key!==today.key&&view===today.cday)view=n.cday;today=n;rollover();
   const a=document.activeElement;if($('#overlay').hidden&&!(a&&(a.tagName==='INPUT'||a.tagName==='SELECT')))render()}
 setInterval(tick,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick()});
